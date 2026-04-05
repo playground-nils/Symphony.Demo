@@ -1,7 +1,5 @@
----
-name: "Template-Bicep-Cleanup"
-
-on: # yamllint disable-line rule:truthy
+name: Template-Bicep-Cleanup
+'on':
   workflow_call:
     inputs:
       pullRequestNumber:
@@ -10,11 +8,9 @@ on: # yamllint disable-line rule:truthy
       githubEnvironment:
         type: string
         required: true
-
 permissions:
   id-token: write
   contents: read
-
 jobs:
   GetEnvironments:
     name: GetEnvironments
@@ -24,52 +20,41 @@ jobs:
       eventName: NewEnvironment
       eventGroupId: PR-${{ inputs.pullRequestNumber }}-${{ github.repository_id }}
       githubEnvironment: symphony
-
   Destroy:
     name: Destroy
     environment: ${{ inputs.githubEnvironment }}
-    needs: [GetEnvironments]
-    runs-on: self-hosted
+    needs:
+    - GetEnvironments
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Setup Toolset
+      run: './setup-azcli.sh
 
-      - name: Setup Toolset
-        run: |
-          ./setup-azcli.sh
-          source ~/.bashrc
-        working-directory: scripts/orchestrators
+        source ~/.bashrc
 
-      - uses: azure/login@v2
-        name: Run Azure Login
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-
-      - name: Run Bicep Destroy
-        env:
-          WORKSPACE_PATH: ${{ github.workspace }}
-          RUN_ID: ${{ github.run_id }}
-          NEW_ENVIRONMENT_EVENTS_JSON: ${{ needs.GetEnvironments.outputs.events }}
-        run: |
-          # NEW_ENVIRONMENT_EVENTS_JSON is an array of events.
-          # Each event has a Name, SHA and Location properties.
-          # For each event, we want to checkout the .SHA commit, get the .Name environment name
-          # and the Location of the environment, and pass it to the destroy script.
-
-          for event in $(echo "${NEW_ENVIRONMENT_EVENTS_JSON}" | jq -c '.[]'); do
-              sha=$(echo "${event}" | jq -r '.SHA')
-              name=$(echo "${event}" | jq -r '.Name')
-              location=$(echo "${event}" | jq -r '.Location')
-
-              git checkout "${sha}"
-              echo "Destroying environment: $name"
-              export ENVIRONMENT_NAME=$name
-              export LOCATION_NAME=$location
-
-              ./iac.bicep.destroy.sh
-          done
-
-        working-directory: scripts/orchestrators
+        '
+      working-directory: scripts/orchestrators
+    - uses: azure/login@v2
+      name: Run Azure Login
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    - name: Run Bicep Destroy
+      env:
+        WORKSPACE_PATH: ${{ github.workspace }}
+        RUN_ID: ${{ github.run_id }}
+        NEW_ENVIRONMENT_EVENTS_JSON: ${{ needs.GetEnvironments.outputs.events }}
+      run: "# NEW_ENVIRONMENT_EVENTS_JSON is an array of events.\n# Each event has\
+        \ a Name, SHA and Location properties.\n# For each event, we want to checkout\
+        \ the .SHA commit, get the .Name environment name\n# and the Location of the\
+        \ environment, and pass it to the destroy script.\n\nfor event in $(echo \"\
+        ${NEW_ENVIRONMENT_EVENTS_JSON}\" | jq -c '.[]'); do\n    sha=$(echo \"${event}\"\
+        \ | jq -r '.SHA')\n    name=$(echo \"${event}\" | jq -r '.Name')\n    location=$(echo\
+        \ \"${event}\" | jq -r '.Location')\n\n    git checkout \"${sha}\"\n    echo\
+        \ \"Destroying environment: $name\"\n    export ENVIRONMENT_NAME=$name\n \
+        \   export LOCATION_NAME=$location\n\n    ./iac.bicep.destroy.sh\ndone\n"
+      working-directory: scripts/orchestrators
